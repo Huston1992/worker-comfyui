@@ -10,3 +10,8 @@ runpod_worker_comfy:
   upscale_models: models/upscale_models/
   vae: models/vae/
   unet: models/unet/
+  # ADetailer / Impact-Pack YOLO detectors
+  ultralytics_bbox: models/ultralytics/bbox/
+  ultralytics_segm: models/ultralytics/segm/
+  ultralytics: models/ultralytics/
+  sams: models/sams/

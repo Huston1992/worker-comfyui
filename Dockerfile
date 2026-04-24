@@ -114,6 +114,15 @@ RUN cd /comfyui/custom_nodes && \
 # Pin numpy to Subpack-compatible version (needs Float64DType from numpy>=1.26.4)
 RUN uv pip install 'numpy>=1.26.4,<2.0'
 
+# Install ComfyUI-VideoHelperSuite for Wan 2.2 I2V video export (VHS_VideoCombine
+# node saves frame batches as MP4). ComfyUI has native nodes_video.py but
+# VideoHelperSuite is the de-facto standard that community video workflows
+# target, and it handles codec options (H.264, frame rate, CRF) more robustly.
+RUN cd /comfyui/custom_nodes && \
+    git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
+    cd ComfyUI-VideoHelperSuite && \
+    uv pip install -r requirements.txt
+
 # Mirror handler runtime deps into /comfyui/.venv.
 #
 # The upstream line `RUN uv pip install runpod requests websocket-client`
@@ -149,6 +158,7 @@ print('[build verify] OK in', sys.executable)"
 # instead of letting us debug 'Node not found' at runtime.
 RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Pack/__init__.py || (echo '[FATAL] Impact-Pack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
 RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Subpack/__init__.py || (echo '[FATAL] Impact-Subpack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
+RUN test -f /comfyui/custom_nodes/ComfyUI-VideoHelperSuite/__init__.py || (echo '[FATAL] VideoHelperSuite missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
 RUN echo '[build verify] /comfyui/custom_nodes at image creation:' && ls -la /comfyui/custom_nodes/
 
 # Set the default command to run when starting the container

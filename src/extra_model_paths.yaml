@@ -15,3 +15,10 @@ runpod_worker_comfy:
   ultralytics_segm: models/ultralytics/segm/
   ultralytics: models/ultralytics/
   sams: models/sams/
+  # Wan 2.2 video model files live alongside standard ComfyUI paths:
+  #   diffusion_models  — Wan 2.2 I2V transformer weights (e.g. wan2.2_i2v_720p_fp8.safetensors)
+  #   text_encoders     — umt5-xxl text encoder (Wan uses UMT5, not standard CLIP)
+  #   vae               — Wan VAE (wan_2.1_vae.safetensors)
+  # Note: ComfyUI natively searches models/diffusion_models/ if declared.
+  diffusion_models: models/diffusion_models/
+  text_encoders: models/text_encoders/

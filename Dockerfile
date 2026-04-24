@@ -113,9 +113,29 @@ RUN cd /comfyui/custom_nodes && \
     VIRTUAL_ENV=/opt/venv uv pip install -r requirements.txt && \
     VIRTUAL_ENV=/opt/venv uv pip install ultralytics
 
-# Sanity check: ensure ultralytics is importable from the same Python that ComfyUI uses
-RUN /opt/venv/bin/python -c "import ultralytics; print('ultralytics OK:', ultralytics.__version__)" \
- && /opt/venv/bin/python -c "from ultralytics import YOLO; print('YOLO OK')"
+# Sanity check: mirror Subpack's exact subcore.py try-block so build fails
+# if ANY of those imports are broken — not just the basic YOLO import.
+# Prior builds passed the "import YOLO" check but then Subpack's more
+# comprehensive import chain failed silently at ComfyUI startup.
+RUN /opt/venv/bin/python -c "\
+import sys; print('python:', sys.executable); \
+import numpy; print('numpy:', numpy.__version__); \
+import torch; print('torch:', torch.__version__); \
+import ultralytics; print('ultralytics:', ultralytics.__version__); \
+from ultralytics import YOLO; \
+from ultralytics.nn.tasks import DetectionModel, SegmentationModel; \
+from ultralytics.utils import IterableSimpleNamespace; \
+from ultralytics.utils.tal import TaskAlignedAssigner; \
+import ultralytics.nn.modules, ultralytics.nn.modules.block, ultralytics.utils.loss; \
+import torch.nn.modules; \
+import dill._dill; \
+from numpy.core.multiarray import scalar; \
+from numpy import dtype; \
+from numpy.dtypes import Float64DType; \
+print('[Impact-Subpack subcore imports] OK')"
+
+# Also force numpy>=1.26.4 (Subpack's subcore checks this explicitly)
+RUN VIRTUAL_ENV=/opt/venv uv pip install 'numpy>=1.26.4,<2.0'
 
 # Set the default command to run when starting the container
 CMD ["/start.sh"]

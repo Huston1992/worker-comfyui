@@ -47,6 +47,13 @@ except Exception as e:
 fi
 echo "worker-comfyui: GPU available — $GPU_CHECK"
 
+# RUNTIME VERIFY — print what is actually in /comfyui/custom_nodes at container
+# boot. If Impact-Pack / Subpack are missing here but were present at build,
+# something between build and runtime is wiping them (e.g. a Volume mount
+# shadowing the path).
+echo "worker-comfyui: [runtime verify] /comfyui/custom_nodes contents:"
+ls -la /comfyui/custom_nodes/ || echo "worker-comfyui: [WARN] /comfyui/custom_nodes does not exist!"
+
 # Ensure ComfyUI-Manager runs in offline network mode inside the container
 comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
 

@@ -131,6 +131,14 @@ from numpy.core.multiarray import scalar; \
 from numpy.dtypes import Float64DType; \
 print('[build verify] OK in', sys.executable)"
 
+# Assert Impact-Pack + Subpack directories physically exist in the image at build
+# completion. If anything after our git clones wipes them (e.g. another RUN, a
+# COPY, or a VOLUME mount shadowing the path), this test fails the build loudly
+# instead of letting us debug 'Node not found' at runtime.
+RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Pack/__init__.py || (echo '[FATAL] Impact-Pack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
+RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Subpack/__init__.py || (echo '[FATAL] Impact-Subpack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
+RUN echo '[build verify] /comfyui/custom_nodes at image creation:' && ls -la /comfyui/custom_nodes/
+
 # Set the default command to run when starting the container
 CMD ["/start.sh"]
 

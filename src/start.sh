@@ -23,6 +23,32 @@ TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
 export LD_PRELOAD="${TCMALLOC}"
 
 # ---------------------------------------------------------------------------
+# Venv resolution
+#
+# Our build has TWO python environments:
+#   - /opt/venv             — created by `uv venv` at Dockerfile top;
+#                             holds runpod, requests, websocket-client
+#   - /comfyui/.venv        — created by `comfy install --nvidia` and/or
+#                             `uv pip install` from Impact-Pack RUN blocks;
+#                             holds torch, ComfyUI deps, Impact-Pack deps
+#
+# The upstream start.sh assumed a single venv and called `python3`
+# directly, expecting torch to be on PATH. In our build torch lives in
+# /comfyui/.venv, so `python3` from /opt/venv raises `ModuleNotFoundError:
+# torch`. Put /comfyui/.venv first on PATH when it exists, so every
+# subsequent `python`/`python3` resolves to the env that actually has
+# torch + Impact-Pack. Keep /opt/venv on PATH as fallback for runpod/etc.
+# ---------------------------------------------------------------------------
+if [ -x /comfyui/.venv/bin/python ]; then
+    echo "worker-comfyui: Detected /comfyui/.venv — using it for runtime python"
+    export PATH="/comfyui/.venv/bin:${PATH}"
+    export VIRTUAL_ENV="/comfyui/.venv"
+else
+    echo "worker-comfyui: /comfyui/.venv not present — falling back to /opt/venv python"
+fi
+echo "worker-comfyui: python3 resolves to $(command -v python3)"
+
+# ---------------------------------------------------------------------------
 # GPU pre-flight check
 # Verify that the GPU is accessible before starting ComfyUI. If PyTorch
 # cannot initialize CUDA the worker will never be able to process jobs,

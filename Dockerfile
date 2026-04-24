@@ -92,10 +92,22 @@ RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 # Install ComfyUI-Impact-Pack + Subpack for high-quality character LoRA generation:
 #  - FaceDetailer (crop face → upscale → re-sample with LoRA → paste) fixes waxy faces
 #  - HandDetailer fixes the classic SDXL bad-hands / extra-fingers problem
-#  - UltralyticsDetectorProvider loads YOLO bbox detectors (face/hand)
+#  - UltralyticsDetectorProvider loads YOLO bbox detectors (face/hand) — lives in Subpack
+# Using direct git clone: comfy-node-install via registry silently skipped these
+# (registry IDs don't match / outdated), so we pull upstream repos directly.
 # Model files face_yolov8m.pt and hand_yolov8n.pt are pre-staged on the Network Volume
 # at models/ultralytics/bbox/ and are picked up via extra_model_paths.yaml.
-RUN comfy-node-install comfyui-impact-pack comfyui-impact-subpack
+RUN cd /comfyui/custom_nodes && \
+    git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
+    cd ComfyUI-Impact-Pack && \
+    git submodule update --init --recursive && \
+    uv pip install -r requirements.txt
+
+RUN cd /comfyui/custom_nodes && \
+    git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git && \
+    cd ComfyUI-Impact-Subpack && \
+    uv pip install -r requirements.txt && \
+    uv pip install ultralytics
 
 # Set the default command to run when starting the container
 CMD ["/start.sh"]

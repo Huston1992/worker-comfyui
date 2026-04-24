@@ -114,6 +114,18 @@ RUN cd /comfyui/custom_nodes && \
 # Pin numpy to Subpack-compatible version (needs Float64DType from numpy>=1.26.4)
 RUN uv pip install 'numpy>=1.26.4,<2.0'
 
+# Mirror handler runtime deps into /comfyui/.venv.
+#
+# The upstream line `RUN uv pip install runpod requests websocket-client`
+# earlier in this Dockerfile installs into /opt/venv because PATH makes
+# /opt/venv/bin/python the active python at that point. But our start.sh
+# prepends /comfyui/.venv/bin to PATH at container boot (because torch /
+# ComfyUI / Impact-Pack deps live in /comfyui/.venv). So when /handler.py
+# runs `import runpod`, python = /comfyui/.venv/bin/python — and the /opt
+# /venv copy is invisible. Install the same deps into /comfyui/.venv so
+# the handler works regardless of which venv is "active" at runtime.
+RUN VIRTUAL_ENV=/comfyui/.venv uv pip install runpod requests websocket-client
+
 # Sanity check using /comfyui/.venv/bin/python (same Python ComfyUI runtime uses
 # because comfy-cli sets up .venv as the active env for /comfyui/main.py).
 RUN /comfyui/.venv/bin/python -c "\

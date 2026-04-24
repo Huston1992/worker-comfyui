@@ -147,7 +147,13 @@ FROM base AS downloader
 
 ARG HUGGINGFACE_ACCESS_TOKEN
 # Set default model type if none is provided
-ARG MODEL_TYPE=flux1-dev-fp8
+# Default 'none' — our endpoint uses Realism Illustrious from the Network Volume,
+# not any baked-in model. Downloading Flux-fp8 (16 GB) or SDXL base as part of
+# the image wastes build time (+5-10 min wget) and pushes image over 24 GB which
+# hits RunPod's 30-min build timeout on the final registry push.
+# All the `if [ "$MODEL_TYPE" = "X" ]` checks below will evaluate false → no wget,
+# models/ dir stays empty, volume-mounted models handle everything at runtime.
+ARG MODEL_TYPE=none
 
 # Change working directory to ComfyUI
 WORKDIR /comfyui

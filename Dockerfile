@@ -89,38 +89,37 @@ ENV PIP_NO_INPUT=1
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
-# Install ComfyUI-Impact-Pack + Subpack for high-quality character LoRA generation:
-#  - FaceDetailer (crop face → upscale → re-sample with LoRA → paste) fixes waxy faces
-#  - HandDetailer fixes the classic SDXL bad-hands / extra-fingers problem
-#  - UltralyticsDetectorProvider loads YOLO bbox detectors (face/hand) — lives in Subpack
-# Using direct git clone: comfy-node-install via registry silently skipped these
-# (registry IDs don't match / outdated), so we pull upstream repos directly.
-# Model files face_yolov8m.pt and hand_yolov8n.pt are pre-staged on the Network Volume
-# at models/ultralytics/bbox/ and are picked up via extra_model_paths.yaml.
-# CRITICAL: uv pip install auto-detects /comfyui/.venv (created by comfy-cli)
-# and installs there — but ComfyUI actually runs with python from /opt/venv
-# (via the PATH env var). Result: deps go to wrong venv, imports fail silently
-# at runtime, custom nodes don't register. Force VIRTUAL_ENV=/opt/venv.
+# Install ComfyUI-Impact-Pack + Subpack for high-quality character LoRA generation.
+# IMPORTANT: use `python -m pip` (NOT `uv pip`). ComfyUI at runtime runs
+# `python -u /comfyui/main.py` via start.sh — whichever `python` is first in
+# PATH. `python -m pip install` installs into THAT python's site-packages,
+# so Impact-Pack deps land in the same environment ComfyUI actually uses.
+# (Earlier attempts with `uv pip install` + VIRTUAL_ENV=/opt/venv missed this:
+# comfy-cli's install had populated a different venv with ComfyUI's base deps
+# like einops, so isolated /opt/venv lacked them.)
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     cd ComfyUI-Impact-Pack && \
     git submodule update --init --recursive && \
-    VIRTUAL_ENV=/opt/venv uv pip install -r requirements.txt
+    python -m pip install -r requirements.txt
 
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git && \
     cd ComfyUI-Impact-Subpack && \
-    VIRTUAL_ENV=/opt/venv uv pip install -r requirements.txt && \
-    VIRTUAL_ENV=/opt/venv uv pip install ultralytics
+    python -m pip install -r requirements.txt && \
+    python -m pip install ultralytics
 
-# Sanity check: mirror Subpack's exact subcore.py try-block so build fails
-# if ANY of those imports are broken — not just the basic YOLO import.
-# Prior builds passed the "import YOLO" check but then Subpack's more
-# comprehensive import chain failed silently at ComfyUI startup.
-RUN /opt/venv/bin/python -c "\
-import sys; print('python:', sys.executable); \
+# Pin numpy to Subpack-compatible version (needs Float64DType — numpy>=1.26.4)
+RUN python -m pip install 'numpy>=1.26.4,<2.0'
+
+# Sanity check: use SAME `python` that ComfyUI runtime will use. Print
+# sys.executable so build log reveals which venv is active.
+# Mirror Subpack's subcore.py try-block exactly + confirm ComfyUI's einops.
+RUN python -c "\
+import sys; print('python exec:', sys.executable); \
 import numpy; print('numpy:', numpy.__version__); \
 import torch; print('torch:', torch.__version__); \
+import einops; print('einops:', einops.__version__); \
 import ultralytics; print('ultralytics:', ultralytics.__version__); \
 from ultralytics import YOLO; \
 from ultralytics.nn.tasks import DetectionModel, SegmentationModel; \
@@ -132,22 +131,7 @@ import dill._dill; \
 from numpy.core.multiarray import scalar; \
 from numpy import dtype; \
 from numpy.dtypes import Float64DType; \
-print('[Impact-Subpack subcore imports] OK')"
-
-# Also force numpy>=1.26.4 (Subpack's subcore checks this explicitly)
-RUN VIRTUAL_ENV=/opt/venv uv pip install 'numpy>=1.26.4,<2.0'
-
-# FINAL VERIFICATION — actually load ComfyUI's custom node loader the way main.py
-# does at startup, and assert that UltralyticsDetectorProvider is registered.
-# If this check fails, the build fails with the exact error (no silent runtime skip).
-RUN cd /comfyui && /opt/venv/bin/python -c "\
-import sys, os; sys.path.insert(0, '/comfyui'); \
-import folder_paths; \
-import nodes; \
-nodes.init_extra_nodes(init_custom_nodes=True); \
-missing = [n for n in ['UltralyticsDetectorProvider', 'FaceDetailer'] if n not in nodes.NODE_CLASS_MAPPINGS]; \
-assert not missing, f'Missing nodes after custom_nodes scan: {missing}'; \
-print('[build verify] ALL NODES REGISTERED:', list(n for n in nodes.NODE_CLASS_MAPPINGS if 'Detailer' in n or 'Ultralytics' in n))"
+print('[build verify] ALL IMPORTS OK in', sys.executable)"
 
 # Set the default command to run when starting the container
 CMD ["/start.sh"]

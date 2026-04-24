@@ -97,17 +97,25 @@ RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 # (registry IDs don't match / outdated), so we pull upstream repos directly.
 # Model files face_yolov8m.pt and hand_yolov8n.pt are pre-staged on the Network Volume
 # at models/ultralytics/bbox/ and are picked up via extra_model_paths.yaml.
+# CRITICAL: uv pip install auto-detects /comfyui/.venv (created by comfy-cli)
+# and installs there — but ComfyUI actually runs with python from /opt/venv
+# (via the PATH env var). Result: deps go to wrong venv, imports fail silently
+# at runtime, custom nodes don't register. Force VIRTUAL_ENV=/opt/venv.
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     cd ComfyUI-Impact-Pack && \
     git submodule update --init --recursive && \
-    uv pip install -r requirements.txt
+    VIRTUAL_ENV=/opt/venv uv pip install -r requirements.txt
 
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git && \
     cd ComfyUI-Impact-Subpack && \
-    uv pip install -r requirements.txt && \
-    uv pip install ultralytics
+    VIRTUAL_ENV=/opt/venv uv pip install -r requirements.txt && \
+    VIRTUAL_ENV=/opt/venv uv pip install ultralytics
+
+# Sanity check: ensure ultralytics is importable from the same Python that ComfyUI uses
+RUN /opt/venv/bin/python -c "import ultralytics; print('ultralytics OK:', ultralytics.__version__)" \
+ && /opt/venv/bin/python -c "from ultralytics import YOLO; print('YOLO OK')"
 
 # Set the default command to run when starting the container
 CMD ["/start.sh"]

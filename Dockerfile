@@ -89,49 +89,47 @@ ENV PIP_NO_INPUT=1
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
-# Install ComfyUI-Impact-Pack + Subpack for high-quality character LoRA generation.
-# IMPORTANT: use `python -m pip` (NOT `uv pip`). ComfyUI at runtime runs
-# `python -u /comfyui/main.py` via start.sh — whichever `python` is first in
-# PATH. `python -m pip install` installs into THAT python's site-packages,
-# so Impact-Pack deps land in the same environment ComfyUI actually uses.
-# (Earlier attempts with `uv pip install` + VIRTUAL_ENV=/opt/venv missed this:
-# comfy-cli's install had populated a different venv with ComfyUI's base deps
-# like einops, so isolated /opt/venv lacked them.)
+# Install ComfyUI-Impact-Pack + Subpack for character LoRA face/hand refinement.
+#
+# Why `uv pip install` (no VIRTUAL_ENV override):
+#   - uv auto-detects /comfyui/.venv — the venv comfy-cli populated with
+#     ComfyUI's own deps (einops, torch, etc). Our Impact-Pack deps land
+#     alongside them → subpack's subcore.py imports resolve at runtime.
+#   - uv caches wheels across Docker layers → keeps build under RunPod
+#     timeout. Plain pip re-downloads ~2GB sam2+deps every time and the
+#     build hits the infra timeout before reaching Docker RUN stages
+#     (symptom: "Creating cache directory" then immediate fail).
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
     cd ComfyUI-Impact-Pack && \
     git submodule update --init --recursive && \
-    python -m pip install -r requirements.txt
+    uv pip install -r requirements.txt
 
 RUN cd /comfyui/custom_nodes && \
     git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git && \
     cd ComfyUI-Impact-Subpack && \
-    python -m pip install -r requirements.txt && \
-    python -m pip install ultralytics
+    uv pip install -r requirements.txt && \
+    uv pip install ultralytics
 
-# Pin numpy to Subpack-compatible version (needs Float64DType — numpy>=1.26.4)
-RUN python -m pip install 'numpy>=1.26.4,<2.0'
+# Pin numpy to Subpack-compatible version (needs Float64DType from numpy>=1.26.4)
+RUN uv pip install 'numpy>=1.26.4,<2.0'
 
-# Sanity check: use SAME `python` that ComfyUI runtime will use. Print
-# sys.executable so build log reveals which venv is active.
-# Mirror Subpack's subcore.py try-block exactly + confirm ComfyUI's einops.
-RUN python -c "\
+# Sanity check using /comfyui/.venv/bin/python (same Python ComfyUI runtime uses
+# because comfy-cli sets up .venv as the active env for /comfyui/main.py).
+RUN /comfyui/.venv/bin/python -c "\
 import sys; print('python exec:', sys.executable); \
 import numpy; print('numpy:', numpy.__version__); \
 import torch; print('torch:', torch.__version__); \
 import einops; print('einops:', einops.__version__); \
 import ultralytics; print('ultralytics:', ultralytics.__version__); \
-from ultralytics import YOLO; \
 from ultralytics.nn.tasks import DetectionModel, SegmentationModel; \
 from ultralytics.utils import IterableSimpleNamespace; \
 from ultralytics.utils.tal import TaskAlignedAssigner; \
 import ultralytics.nn.modules, ultralytics.nn.modules.block, ultralytics.utils.loss; \
-import torch.nn.modules; \
 import dill._dill; \
 from numpy.core.multiarray import scalar; \
-from numpy import dtype; \
 from numpy.dtypes import Float64DType; \
-print('[build verify] ALL IMPORTS OK in', sys.executable)"
+print('[build verify] OK in', sys.executable)"
 
 # Set the default command to run when starting the container
 CMD ["/start.sh"]

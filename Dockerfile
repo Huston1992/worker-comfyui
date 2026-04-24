@@ -137,6 +137,18 @@ print('[Impact-Subpack subcore imports] OK')"
 # Also force numpy>=1.26.4 (Subpack's subcore checks this explicitly)
 RUN VIRTUAL_ENV=/opt/venv uv pip install 'numpy>=1.26.4,<2.0'
 
+# FINAL VERIFICATION — actually load ComfyUI's custom node loader the way main.py
+# does at startup, and assert that UltralyticsDetectorProvider is registered.
+# If this check fails, the build fails with the exact error (no silent runtime skip).
+RUN cd /comfyui && /opt/venv/bin/python -c "\
+import sys, os; sys.path.insert(0, '/comfyui'); \
+import folder_paths; \
+import nodes; \
+nodes.init_extra_nodes(init_custom_nodes=True); \
+missing = [n for n in ['UltralyticsDetectorProvider', 'FaceDetailer'] if n not in nodes.NODE_CLASS_MAPPINGS]; \
+assert not missing, f'Missing nodes after custom_nodes scan: {missing}'; \
+print('[build verify] ALL NODES REGISTERED:', list(n for n in nodes.NODE_CLASS_MAPPINGS if 'Detailer' in n or 'Ultralytics' in n))"
+
 # Set the default command to run when starting the container
 CMD ["/start.sh"]
 

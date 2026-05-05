@@ -23,6 +23,7 @@ ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 RUN apt-get update && apt-get install -y \
     python3.12 \
     python3.12-venv \
+    python3.12-dev \
     git \
     wget \
     libgl1 \
@@ -32,6 +33,9 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     ffmpeg \
     openssh-server \
+    build-essential \
+    cmake \
+    pkg-config \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/pip3 /usr/bin/pip
 
@@ -127,17 +131,30 @@ RUN cd /comfyui/custom_nodes && \
 # grade swap recipe: InsightFace inswapper_128 ONNX + GFPGAN/CodeFormer face
 # restoration + optional FaceDetailer harmonisation post-pass).
 #
-# We use Gourieff/ComfyUI-ReActor (the active fork — original 'reactor-node'
-# was archived for compliance reasons but the technical core is identical).
-# Models (inswapper_128.onnx, GFPGAN, buffalo_l detectors) are NOT baked into
-# the image — they live on the Network Volume under models/insightface/ and
-# models/facerestore_models/ to keep the image lean and let us swap models
-# without rebuilding.
+# Source: codeberg.org/Gourieff/comfyui-reactor-node (active fork — original
+# github reactor-node was archived for compliance reasons; codeberg fork has
+# active maintenance).
+#
+# Why the install is split into separate RUN layers (instead of one chain):
+#   1) insightface has NO prebuilt wheel for Python 3.12 (our image's runtime).
+#      pip falls back to source compile, which needs build-essential + cmake +
+#      python3-dev + numpy already installed (Cython generates code referencing
+#      numpy headers). build-essential/cmake are added in the apt step above.
+#   2) Pre-installing numpy + cython explicitly before insightface means the
+#      compile step sees them and doesn't fight pip's resolver mid-build.
+#   3) Splitting into multiple RUN layers makes failures observable in build
+#      logs — we know exactly which step broke.
+#
+# Models (inswapper_128.onnx, GFPGAN, buffalo_l) live on Network Volume, not
+# in the image — keeps image lean.
+RUN uv pip install --upgrade cython
 RUN cd /comfyui/custom_nodes && \
-    git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor && \
-    cd ComfyUI-ReActor && \
-    uv pip install -r requirements.txt && \
-    uv pip install onnxruntime-gpu insightface
+    git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor
+RUN uv pip install --prefer-binary onnxruntime-gpu
+RUN uv pip install --no-build-isolation insightface
+RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
+    uv pip install -r requirements.txt
+RUN /comfyui/.venv/bin/python -c "import insightface; import onnxruntime; print('insightface', insightface.__version__, '| onnxruntime', onnxruntime.__version__)"
 
 # Mirror handler runtime deps into /comfyui/.venv.
 #

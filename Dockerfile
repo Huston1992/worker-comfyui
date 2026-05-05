@@ -150,7 +150,10 @@ RUN cd /comfyui/custom_nodes && \
 RUN uv pip install --upgrade cython
 RUN cd /comfyui/custom_nodes && \
     git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor
-RUN uv pip install --prefer-binary onnxruntime-gpu
+# uv prefers binary wheels by default — no --prefer-binary flag (it's a pip-only
+# flag, uv exits 2 on it). Pin onnxruntime-gpu to a version with confirmed
+# Python 3.12 + CUDA 12 wheel on PyPI (1.20.x line is stable for our combo).
+RUN uv pip install "onnxruntime-gpu>=1.20,<1.23"
 RUN uv pip install --no-build-isolation insightface
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     uv pip install -r requirements.txt

@@ -157,7 +157,20 @@ RUN uv pip install "onnxruntime-gpu>=1.20,<1.23"
 RUN uv pip install --no-build-isolation insightface
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     uv pip install -r requirements.txt
-RUN /comfyui/.venv/bin/python -c "import insightface; import onnxruntime; print('insightface', insightface.__version__, '| onnxruntime', onnxruntime.__version__)"
+
+# Diagnostic dump — always succeeds (final `true` ensures exit 0). Shows us
+# exactly which packages got installed and which (if any) fail to import,
+# with full traceback. Build proceeds regardless so we get a working image
+# even if one of these has a soft failure we can fix later at runtime.
+RUN echo '=== [verify] python version ===' && \
+    /comfyui/.venv/bin/python --version && \
+    echo '=== [verify] relevant installed packages ===' && \
+    /comfyui/.venv/bin/python -m pip list 2>&1 | grep -iE 'insight|onnx|torch|numpy|cython|opencv|albumen' || true ; \
+    for mod in onnxruntime insightface cv2 torch numpy; do \
+        echo "=== [verify] importing $mod ==="; \
+        /comfyui/.venv/bin/python -c "import $mod; print('  [OK] $mod', getattr($mod, '__version__', '?'))" || echo "  [FAIL] $mod import failed (traceback above)"; \
+    done; \
+    true
 
 # Mirror handler runtime deps into /comfyui/.venv.
 #

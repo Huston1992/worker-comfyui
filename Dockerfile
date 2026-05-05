@@ -123,6 +123,22 @@ RUN cd /comfyui/custom_nodes && \
     cd ComfyUI-VideoHelperSuite && \
     uv pip install -r requirements.txt
 
+# Install ComfyUI-ReActor for face-swap on existing images (the 2026 community-
+# grade swap recipe: InsightFace inswapper_128 ONNX + GFPGAN/CodeFormer face
+# restoration + optional FaceDetailer harmonisation post-pass).
+#
+# We use Gourieff/ComfyUI-ReActor (the active fork — original 'reactor-node'
+# was archived for compliance reasons but the technical core is identical).
+# Models (inswapper_128.onnx, GFPGAN, buffalo_l detectors) are NOT baked into
+# the image — they live on the Network Volume under models/insightface/ and
+# models/facerestore_models/ to keep the image lean and let us swap models
+# without rebuilding.
+RUN cd /comfyui/custom_nodes && \
+    git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor && \
+    cd ComfyUI-ReActor && \
+    uv pip install -r requirements.txt && \
+    uv pip install onnxruntime-gpu insightface
+
 # Mirror handler runtime deps into /comfyui/.venv.
 #
 # The upstream line `RUN uv pip install runpod requests websocket-client`
@@ -159,6 +175,7 @@ print('[build verify] OK in', sys.executable)"
 RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Pack/__init__.py || (echo '[FATAL] Impact-Pack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
 RUN test -f /comfyui/custom_nodes/ComfyUI-Impact-Subpack/__init__.py || (echo '[FATAL] Impact-Subpack missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
 RUN test -f /comfyui/custom_nodes/ComfyUI-VideoHelperSuite/__init__.py || (echo '[FATAL] VideoHelperSuite missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
+RUN test -f /comfyui/custom_nodes/ComfyUI-ReActor/__init__.py || (echo '[FATAL] ReActor missing at end of build' && ls -la /comfyui/custom_nodes/ && exit 1)
 RUN echo '[build verify] /comfyui/custom_nodes at image creation:' && ls -la /comfyui/custom_nodes/
 
 # Set the default command to run when starting the container

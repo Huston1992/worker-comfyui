@@ -22,3 +22,8 @@ runpod_worker_comfy:
   # Note: ComfyUI natively searches models/diffusion_models/ if declared.
   diffusion_models: models/diffusion_models/
   text_encoders: models/text_encoders/
+  # ReActor face-swap pipeline:
+  #   insightface/         — buffalo_l face detector + analyzer + inswapper_128.onnx
+  #   facerestore_models/  — GFPGANv1.4.pth / codeformer.pth for post-swap restoration
+  insightface: models/insightface/
+  facerestore_models: models/facerestore_models/

@@ -155,6 +155,15 @@ RUN cd /comfyui/custom_nodes && \
 # Python 3.12 + CUDA 12 wheel on PyPI (1.20.x line is stable for our combo).
 RUN uv pip install "onnxruntime-gpu>=1.20,<1.23"
 RUN uv pip install --no-build-isolation insightface
+# segment-anything is required by ReActor's MaskHelper node. ReActor's own
+# requirements.txt lists it as `segment_anything` (with underscore) — but the
+# PyPI package name is `segment-anything` (with hyphen). Without this line the
+# requirements.txt install silently no-ops on this dep, then `import
+# segment_anything` in ReActor's nodes.py raises ModuleNotFoundError, and
+# ComfyUI **skips the entire ReActor module** at startup — none of the ReActor
+# nodes get registered. Symptom at job runtime:
+#   "Node 'ReActorFaceSwap' not found. The custom node may not be installed."
+RUN uv pip install segment-anything
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     uv pip install -r requirements.txt
 
@@ -166,7 +175,7 @@ RUN echo '=== [verify] python version ===' && \
     /comfyui/.venv/bin/python --version && \
     echo '=== [verify] relevant installed packages ===' && \
     /comfyui/.venv/bin/python -m pip list 2>&1 | grep -iE 'insight|onnx|torch|numpy|cython|opencv|albumen' || true ; \
-    for mod in onnxruntime insightface cv2 torch numpy; do \
+    for mod in onnxruntime insightface cv2 torch numpy segment_anything; do \
         echo "=== [verify] importing $mod ==="; \
         /comfyui/.venv/bin/python -c "import $mod; print('  [OK] $mod', getattr($mod, '__version__', '?'))" || echo "  [FAIL] $mod import failed (traceback above)"; \
     done; \

@@ -164,8 +164,23 @@ RUN uv pip install --no-build-isolation insightface
 # nodes get registered. Symptom at job runtime:
 #   "Node 'ReActorFaceSwap' not found. The custom node may not be installed."
 RUN uv pip install segment-anything
+# basicsr and facexlib are required by ReActor's r_facelib (FaceRestoreHelper).
+# They're not listed in ReActor's requirements.txt because the project ships
+# vendored copies as r_basicsr / r_facelib — but those vendored copies still
+# import the real basicsr/facexlib packages internally for some utilities.
+# Without these, `from r_facelib.utils.face_restoration_helper import
+# FaceRestoreHelper` in nodes.py raises ModuleNotFoundError at ComfyUI startup
+# and ALL ReActor nodes fail to register.
+RUN uv pip install basicsr facexlib
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     uv pip install -r requirements.txt
+# Run ReActor's own install.py — it does runtime detection (CUDA version, torch
+# version) and installs a matching onnxruntime variant + does is_installed()
+# verification with strict version checks. Without running this, ComfyUI-Manager
+# normally invokes it after clone — we clone via Dockerfile so we must do it
+# ourselves. install.py is idempotent.
+RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
+    /comfyui/.venv/bin/python install.py || echo "[WARN] install.py exited non-zero — check verify dump below"
 
 # Diagnostic dump — always succeeds (final `true` ensures exit 0). Shows us
 # exactly which packages got installed and which (if any) fail to import,
@@ -175,10 +190,14 @@ RUN echo '=== [verify] python version ===' && \
     /comfyui/.venv/bin/python --version && \
     echo '=== [verify] relevant installed packages ===' && \
     /comfyui/.venv/bin/python -m pip list 2>&1 | grep -iE 'insight|onnx|torch|numpy|cython|opencv|albumen' || true ; \
-    for mod in onnxruntime insightface cv2 torch numpy segment_anything; do \
+    for mod in onnxruntime insightface cv2 torch numpy segment_anything basicsr facexlib albumentations; do \
         echo "=== [verify] importing $mod ==="; \
         /comfyui/.venv/bin/python -c "import $mod; print('  [OK] $mod', getattr($mod, '__version__', '?'))" || echo "  [FAIL] $mod import failed (traceback above)"; \
     done; \
+    echo "=== [verify] simulating ComfyUI loading ReActor's nodes.py ===" && \
+    cd /comfyui/custom_nodes/ComfyUI-ReActor && \
+    /comfyui/.venv/bin/python -c "import sys; sys.path.insert(0, '.'); from nodes import NODE_CLASS_MAPPINGS as M; print('  [OK] ReActor loaded with', len(M), 'nodes:', list(M.keys())[:6])" \
+        || echo "  [FAIL] ReActor nodes.py import failed (TRACEBACK ABOVE — this is what ComfyUI sees too)"; \
     true
 
 # Mirror handler runtime deps into /comfyui/.venv.

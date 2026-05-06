@@ -147,38 +147,36 @@ RUN cd /comfyui/custom_nodes && \
 #
 # Models (inswapper_128.onnx, GFPGAN, buffalo_l) live on Network Volume, not
 # in the image — keeps image lean.
-RUN uv pip install --upgrade cython
+# CRITICAL: every `uv pip install` for ReActor-related packages MUST set
+# VIRTUAL_ENV=/comfyui/.venv. Otherwise uv falls back to PATH-based detection
+# and installs into /opt/venv (where ComfyUI does NOT live). ComfyUI runtime
+# uses /comfyui/.venv/bin/python, so packages in /opt/venv are invisible.
+# This is the SAME dual-venv issue we hit earlier for runpod/requests deps.
+#
+# Without VIRTUAL_ENV: insightface/basicsr/facexlib/segment-anything end up in
+# /opt/venv → ReActor's `import insightface` raises ModuleNotFoundError at
+# ComfyUI startup → ALL 16 ReActor nodes fail to register → every FaceSwap
+# job fails with "Node 'ReActorFaceSwap' not found". This is exactly what
+# happened in builds c6ec766/fc40f25/6758090/e0ac295 — the prior fixes were
+# correct in concept but installed into the wrong venv.
+RUN VIRTUAL_ENV=/comfyui/.venv uv pip install --upgrade cython
 RUN cd /comfyui/custom_nodes && \
     git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor
-# uv prefers binary wheels by default — no --prefer-binary flag (it's a pip-only
-# flag, uv exits 2 on it). Pin onnxruntime-gpu to a version with confirmed
-# Python 3.12 + CUDA 12 wheel on PyPI (1.20.x line is stable for our combo).
-RUN uv pip install "onnxruntime-gpu>=1.20,<1.23"
-RUN uv pip install --no-build-isolation insightface
-# segment-anything is required by ReActor's MaskHelper node. ReActor's own
-# requirements.txt lists it as `segment_anything` (with underscore) — but the
-# PyPI package name is `segment-anything` (with hyphen). Without this line the
-# requirements.txt install silently no-ops on this dep, then `import
-# segment_anything` in ReActor's nodes.py raises ModuleNotFoundError, and
-# ComfyUI **skips the entire ReActor module** at startup — none of the ReActor
-# nodes get registered. Symptom at job runtime:
-#   "Node 'ReActorFaceSwap' not found. The custom node may not be installed."
-RUN uv pip install segment-anything
-# basicsr and facexlib are required by ReActor's r_facelib (FaceRestoreHelper).
-# They're not listed in ReActor's requirements.txt because the project ships
-# vendored copies as r_basicsr / r_facelib — but those vendored copies still
-# import the real basicsr/facexlib packages internally for some utilities.
-# Without these, `from r_facelib.utils.face_restoration_helper import
-# FaceRestoreHelper` in nodes.py raises ModuleNotFoundError at ComfyUI startup
-# and ALL ReActor nodes fail to register.
-RUN uv pip install basicsr facexlib
+# insightface: --no-build-isolation lets pip use already-installed numpy/cython
+# in /comfyui/.venv when compiling Cython extensions (no PyPI wheel for py3.12).
+RUN VIRTUAL_ENV=/comfyui/.venv uv pip install --no-build-isolation insightface
+# segment-anything: ReActor's requirements.txt lists `segment_anything` but
+# PyPI name is `segment-anything` (hyphen). Explicit install handles this.
+RUN VIRTUAL_ENV=/comfyui/.venv uv pip install segment-anything
+# basicsr + facexlib: not in ReActor's requirements.txt but used internally by
+# r_facelib's FaceRestoreHelper.
+RUN VIRTUAL_ENV=/comfyui/.venv uv pip install basicsr facexlib
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     uv pip install -r requirements.txt
-# Run ReActor's own install.py — it does runtime detection (CUDA version, torch
-# version) and installs a matching onnxruntime variant + does is_installed()
-# verification with strict version checks. Without running this, ComfyUI-Manager
-# normally invokes it after clone — we clone via Dockerfile so we must do it
-# ourselves. install.py is idempotent.
+# install.py does runtime detection (CUDA / torch versions) and installs a
+# matching onnxruntime-gpu variant — that's why we DON'T install onnxruntime-gpu
+# manually anymore (we'd just be overridden). install.py uses
+# /comfyui/.venv/bin/python explicitly so it's already in the right venv.
 RUN cd /comfyui/custom_nodes/ComfyUI-ReActor && \
     /comfyui/.venv/bin/python install.py || echo "[WARN] install.py exited non-zero — check verify dump below"
 
@@ -196,7 +194,7 @@ RUN echo '=== [verify] python version ===' && \
     done; \
     echo "=== [verify] simulating ComfyUI loading ReActor's nodes.py ===" && \
     cd /comfyui/custom_nodes/ComfyUI-ReActor && \
-    /comfyui/.venv/bin/python -c "import sys; sys.path.insert(0, '.'); from nodes import NODE_CLASS_MAPPINGS as M; print('  [OK] ReActor loaded with', len(M), 'nodes:', list(M.keys())[:6])" \
+    /comfyui/.venv/bin/python -c "import sys; sys.path.insert(0, '/comfyui'); sys.path.insert(0, '.'); from nodes import NODE_CLASS_MAPPINGS as M; print('  [OK] ReActor loaded with', len(M), 'nodes:', list(M.keys())[:6])" \
         || echo "  [FAIL] ReActor nodes.py import failed (TRACEBACK ABOVE — this is what ComfyUI sees too)"; \
     true
 

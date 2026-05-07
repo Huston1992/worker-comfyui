@@ -750,11 +750,19 @@ def handler(job):
 
         print(f"worker-comfyui - Processing {len(outputs)} output nodes...")
         for node_id, node_output in outputs.items():
-            if "images" in node_output:
-                print(
-                    f"worker-comfyui - Node {node_id} contains {len(node_output['images'])} image(s)"
-                )
-                for image_info in node_output["images"]:
+            # Collect file entries from both image-style and video-style output keys.
+            # ComfyUI uses "images" for SaveImage and "gifs" for video combiners
+            # (VHS_VideoCombine, SaveAnimatedWEBP, etc — legacy key name covers
+            # MP4/WEBM/GIF/WEBP output). "videos" is a newer ComfyUI core key.
+            collected = []
+            for key in ("images", "gifs", "videos"):
+                if key in node_output:
+                    print(
+                        f"worker-comfyui - Node {node_id} '{key}' contains {len(node_output[key])} item(s)"
+                    )
+                    collected.extend(node_output[key])
+            if collected:
+                for image_info in collected:
                     filename = image_info.get("filename")
                     subfolder = image_info.get("subfolder", "")
                     img_type = image_info.get("type")
@@ -839,7 +847,8 @@ def handler(job):
                         errors.append(error_msg)
 
             # Check for other output types
-            other_keys = [k for k in node_output.keys() if k != "images"]
+            handled = {"images", "gifs", "videos"}
+            other_keys = [k for k in node_output.keys() if k not in handled]
             if other_keys:
                 warn_msg = (
                     f"Node {node_id} produced unhandled output keys: {other_keys}."

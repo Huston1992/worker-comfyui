@@ -73,6 +73,34 @@ except Exception as e:
 fi
 echo "worker-comfyui: GPU available — $GPU_CHECK"
 
+# ---------------------------------------------------------------------------
+# Symlink /comfyui/models/facerestore_models -> /runpod-volume/...
+#
+# ReActor's downloader hardcodes /comfyui/models/facerestore_models/ as the
+# destination for GFPGAN downloads. It does NOT consult ComfyUI's folder_paths
+# or extra_model_paths.yaml — it just writes there directly.
+#
+# Without a symlink: every cold-start re-downloads ~660 MB of GFPGAN (v1.3 +
+# v1.4) onto the container's local disk → handler.py POST to ComfyUI :8188
+# times out after 30s while ComfyUI is busy downloading → first job fails.
+# After container terminate, files are gone — next cold-start downloads again.
+#
+# Symlink to Volume: ReActor's "download" actually checks if file exists on
+# Volume (where we pre-uploaded both v1.3 and v1.4) → finds them → skips
+# download → handler responds in time. Files persist across all workers.
+mkdir -p /comfyui/models
+if [ ! -L /comfyui/models/facerestore_models ]; then
+    rm -rf /comfyui/models/facerestore_models 2>/dev/null
+    ln -sfn /runpod-volume/models/facerestore_models /comfyui/models/facerestore_models
+    echo "worker-comfyui: facerestore_models symlinked to Volume"
+fi
+# Same trick for insightface — same hardcoded-path issue with inswapper_128.
+if [ ! -L /comfyui/models/insightface ]; then
+    rm -rf /comfyui/models/insightface 2>/dev/null
+    ln -sfn /runpod-volume/models/insightface /comfyui/models/insightface
+    echo "worker-comfyui: insightface symlinked to Volume"
+fi
+
 # RUNTIME VERIFY — print what is actually in /comfyui/custom_nodes at container
 # boot. If Impact-Pack / Subpack are missing here but were present at build,
 # something between build and runtime is wiping them (e.g. a Volume mount

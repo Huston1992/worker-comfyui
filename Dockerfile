@@ -82,6 +82,16 @@ RUN uv pip install runpod requests websocket-client
 ADD src/start.sh src/network_volume.py handler.py test_input.json ./
 RUN chmod +x /start.sh
 
+# Patch handler.py timeouts: upstream uses 30s for POST /prompt and GET
+# /history. With ReActor-style custom nodes that auto-download large models
+# on first use (GFPGAN ~660 MB), ComfyUI is busy serving the download and
+# can't respond to /prompt POST in 30s → handler raises ReadTimeout, job
+# fails. Bumping all three timeouts to 300s (5 min) gives custom nodes
+# headroom to do first-time setup. Steady-state requests are <1s — this
+# only affects rare cold-start downloads.
+RUN sed -i 's/timeout=30\b/timeout=300/g' /handler.py && \
+    grep -c 'timeout=300' /handler.py
+
 # Add script to install custom nodes
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
 RUN chmod +x /usr/local/bin/comfy-node-install

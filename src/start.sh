@@ -100,6 +100,16 @@ if [ ! -L /comfyui/models/insightface ]; then
     ln -sfn /runpod-volume/models/insightface /comfyui/models/insightface
     echo "worker-comfyui: insightface symlinked to Volume"
 fi
+# facexlib (used by GFPGAN inside ReActorRestoreFace) hardcodes
+# /comfyui/models/facedetection/ and downloads detection_Resnet50_Final.pth +
+# parsing_parsenet.pth from github.com on first call. Cold-start downloads at
+# ~150 KB/s (slow GH→RunPod link) — 9+ min hang while handler websocket times
+# out. Pre-upload both files to Volume and symlink so download is skipped.
+if [ ! -L /comfyui/models/facedetection ]; then
+    rm -rf /comfyui/models/facedetection 2>/dev/null
+    ln -sfn /runpod-volume/models/facedetection /comfyui/models/facedetection
+    echo "worker-comfyui: facedetection symlinked to Volume"
+fi
 
 # RUNTIME VERIFY — print what is actually in /comfyui/custom_nodes at container
 # boot. If Impact-Pack / Subpack are missing here but were present at build,
